@@ -1,19 +1,19 @@
 #include "ets_sys.h"
 #include "osapi.h"
-#include "wifi.h"
-#include "config.h"
-#include "debug.h"
+
+//#include "config.h"
+//#include "debug.h"
+
 #include "gpio.h"
 #include "user_interface.h"
 #include "mem.h"
- 
-#include "stdout/stdout.h"
-#include "ping/ping.h"
+
+#include "wifi.h" 
+#include "stdout.h"
+#include "ping.h"
 #include "user_config.h"
 
 static Ping_Data ping;
-uint8_t mesh_level;
-uint8_t uplink_bssid;
 
 void ICACHE_FLASH_ATTR
 wifiConnectCb(uint8_t status) {
@@ -39,7 +39,7 @@ loop(void) {
 
 static void ICACHE_FLASH_ATTR
 setup(void) {
-  ping_init(&ping, 2, 0, PING_SAMPLE_PERIOD); // trigger=GPIO2, echo=GPIO0, set the pins to the same value for one-pin-mode
+  ping_init(&ping, 2, 0, PING_SAMPLE_PERIOD); // trigger=GPIO2, echo=GPIO0
 
   // Start repeating loop timer
   os_timer_disarm(&loop_timer);
