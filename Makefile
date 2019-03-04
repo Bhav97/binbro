@@ -1,154 +1,170 @@
-# name for the target project
-TARGET = binbro
-#FLAVOUR = release
-FLAVOR = debug
-
+# Changelog
+# Changed the variables to include the header file directory
+# Added global var for the XTENSA tool root
+#
+# This make file still needs some work.
+#
+#
+# Output directors to store intermediate compiled files
 # relative to the project directory
-BUILD = build
-FIRMWARE	= $(BUILD)/firmware
+BUILD_BASE	= build
+FW_BASE = firmware
+ESPTOOL = esptool.py
+ESPTOOLOPTS	= -ff 40m -fm dio -fs 8m
 
-# add xtensa toolchain to the path
-XTENSA_TOOLS ?= $(CURDIR)/../esp-open-sdk/xtensa-lx106-elf/bin
-PATH := $(XTENSA_TOOLS):$(PATH)
-
-# # root directory of the ESP8266 SDK package, absolute
-SDK	?= $(CURDIR)/../esp-open-sdk/sdk
-LWIP ?= $(CURDIR)/../esp-open-sdk/esp-open-lwip
-
-# # esptool.py path and port
-ESPTOOL	?= $(XTENSA_TOOLS)/esptool.py
-PORT ?= /dev/ttyUSB0
-BAUD ?= 115200
-# flash size 8Mbits - EN25Q80A 
-# SPI flash mode - dual I/O
-	# In dio mode, the host uses the "Dual I/O Fast Read" (BBH) command to read data. 
-	# Each read command is sent from the host to the flash chip via normal SPI, but then 
-	# the address is sent to the flash chip via both the MOSI & MISO pins with two bits per clock. 
-	# After this, the host reads the data bits with two bits per clock in the same way as "Dual Output Fast Read".
-# Flash speed 40 Mhz
-ESPTOOLOPTS	= -ff 40m -fm dio -fs 1MB
-
-# which modules (subdirectories) of the project to include in compiling
-MODULES	= user easygpio stdout ping
-
-# compiler flags using during compilation of source files
-# warn on pointer arithmetic GNU
-# warn if an undefined identifier is evaluated in an `#if' directive
-# treat warnings as errors
-# -Wl passes CSV to linker
-# -EL Link little endian objects
-CFLAGS = -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH -DLWIP_OPEN_SRC -DUSE_OPTIMIZE_PRINTF
-
-# TODO : enable flavors
-#ifeq ($(FLAVOR), debug)
-#	CFLAGS += -g -O2
-#endif
-
-# linker flags used to generate the main object file
-LDFLAGS	= -nostdlib -Wl,--no-check-sections -u call_user_start -Wl,-static -L.
+# name for the target project
+TARGET		= app
 
 # linker script used for the above linkier step
-#LD_SCRIPT	= eagle.app.v6.ld
-LD_SCRIPT1	= -Trom0.ld
-LD_SCRIPT2	= -Trom1.ld
-
-# libraries used in this project, mainly provided by the SDK
-LIBS = c gcc hal pp phy net80211 lwip_open_napt wpa wpa2 main
-LIBS		:= $(addprefix -l,$(LIBS))
-
-# various paths from the SDK used in this project
-SDK_LIBDIR	= $(addprefix $(SDK)/,lib)
-SDK_INCLUDE	= include include/json
-SDK_INCLUDE	:= $(addprefix -I$(SDK)/,$(SDK_INCLUDE))
+LD_SCRIPT	= eagle.app.v6.ld
 
 # we create two different files for uploading into the flash
 # these are the names and options to generate them
-FW_1_ADDR	= 0x02000
-FW_2_ADDR	= 0x82000
+FW_1	= 0x00000
+FW_2	= 0x10000
 
-# select compiler, assembler and linker
-CC := $(XTENSA_TOOLS)/xtensa-lx106-elf-gcc
-AR := $(XTENSA_TOOLS)/xtensa-lx106-elf-ar
-LD := $(XTENSA_TOOLS)/xtensa-lx106-elf-ld
+FLAVOR ?= release
+
+XTENSA_TOOLS ?= $(CURDIR)/../esp-open-sdk/xtensa-lx106-elf/bin
+PATH := $(XTENSA_TOOLS):$(PATH)
 
 
-SRC_DIR	:= $(MODULES)
-BUILD_DIR := $(addprefix $(BUILD)/,$(MODULES))
+#############################################################
+# Select compile
+#
 
-SRC	:= $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/*.c))
-OBJ	:= $(patsubst %.c,$(BUILD)/%.o,$(SRC))
+# We are under other system, may be Linux. Assume using gcc.
+	# Can we use -fdata-sections?
+ESPPORT ?= /dev/ttyUSB0
+SDK_BASE	?= $(CURDIR)/../esp-open-sdk/sdk
 
-APP_AR := $(addprefix $(BUILD)/,$(TARGET)_app.a)
-TARGET_OUT := $(addprefix $(BUILD)/,$(TARGET).out)
+CCFLAGS += -Os -ffunction-sections -fno-jump-tables
+AR = xtensa-lx106-elf-ar
+CC = xtensa-lx106-elf-gcc
+LD = xtensa-lx106-elf-gcc
+NM = xtensa-lx106-elf-nm
+CPP = xtensa-lx106-elf-cpp
+OBJCOPY = xtensa-lx106-elf-objcopy
+UNAME_S := $(shell uname -s)
 
-#LD_SCRIPT	:= $(addprefix -T$(SDK)/$(SDK_LDDIR)/,$(LD_SCRIPT))
+#############################################################
+
+
+# which modules (subdirectories) of the project to include in compiling
+MODULES      = modules/stdout modules/easygpio modules/ping modules/user modules/wifi modules/conn
+EXTRA_INCDIR = include $(SDK_BASE)/../include
+
+# libraries used in this project, mainly provided by the SDK
+LIBS		= c gcc hal phy pp net80211 lwip wpa main crypto lwip_open_napt
+
+# compiler flags using during compilation of source files
+CFLAGS		= -Os -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
+
+# linker flags used to generate the main object file
+LDFLAGS		= -nostdlib -Wl,--no-check-sections -u call_user_start -Wl,-static
+
+ifeq ($(FLAVOR),debug)
+    CFLAGS += -O0
+    LDFLAGS += -O0
+endif
+
+ifeq ($(FLAVOR),release)
+    CFLAGS += -O2
+    LDFLAGS += -O2
+endif
+
+
+
+# various paths from the SDK used in this project
+SDK_LIBDIR	= lib
+SDK_LDDIR	= ld
+SDK_INCDIR	= include include/json
+
+####
+#### no user configurable options below here
+####
+FW_TOOL		?= $(ESPTOOL)
+SRC_DIR		:= $(MODULES)
+BUILD_DIR	:= $(addprefix $(BUILD_BASE)/,$(MODULES))
+
+SDK_LIBDIR	:= $(addprefix $(SDK_BASE)/,$(SDK_LIBDIR))
+SDK_INCDIR	:= $(addprefix -I$(SDK_BASE)/,$(SDK_INCDIR))
+
+SRC		:= $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/*.c))
+OBJ		:= $(patsubst %.c,$(BUILD_BASE)/%.o,$(SRC))
+LIBS		:= $(addprefix -l,$(LIBS))
+APP_AR		:= $(addprefix $(BUILD_BASE)/,$(TARGET)_app.a)
+TARGET_OUT	:= $(addprefix $(BUILD_BASE)/,$(TARGET).out)
+
+LD_SCRIPT	:= $(addprefix -T$(SDK_BASE)/$(SDK_LDDIR)/,$(LD_SCRIPT))
 
 INCDIR	:= $(addprefix -I,$(SRC_DIR))
 EXTRA_INCDIR	:= $(addprefix -I,$(EXTRA_INCDIR))
 MODULE_INCDIR	:= $(addsuffix /include,$(INCDIR))
 
-FW_FILE_1	:= $(addprefix $(FIRMWARE)/,$(FW_1_ADDR).bin)
-FW_FILE_2	:= $(addprefix $(FIRMWARE)/,$(FW_2_ADDR).bin)
-RBOOT_FILE	:= $(addprefix $(FIRMWARE)/,0x00000.bin)
+FW_FILE_1	:= $(addprefix $(FW_BASE)/,$(FW_1).bin)
+FW_FILE_2	:= $(addprefix $(FW_BASE)/,$(FW_2).bin)
+
+V ?= $(VERBOSE)
+ifeq ("$(V)","1")
+Q :=
+vecho := @true
+else
+Q := @
+vecho := @echo -ne
+endif
 
 vpath %.c $(SRC_DIR)
 
 define compile-objects
 $1/%.o: %.c
-	$(CC) $(INCDIR) $(MODULE_INCDIR) $(EXTRA_INCDIR) $(SDK_INCLUDE) $(CFLAGS) -c $$< -o $$@
+	$(vecho) "\e[0;32m[OK]\e[0m CC $$<\n"
+	$(Q) $(CC) $(INCDIR) $(MODULE_INCDIR) $(EXTRA_INCDIR) $(SDK_INCDIR) $(CFLAGS)  -c $$< -o $$@
 endef
 
 .PHONY: all checkdirs clean
 
-#all: checkdirs $(TARGET_OUT) $(FW_FILE_1) $(FW_FILE_2)
-all: checkdirs $(FW_FILE_1) $(FW_FILE_2) $(RBOOT_FILE) $(FIRMWARE)/sha1sums
+all: checkdirs $(TARGET_OUT) $(FW_FILE_1) $(FW_FILE_2)
 
-#$(FIRMWARE)/%.bin: $(TARGET_OUT) | $(FIRMWARE)
-#	$(vecho) "FW" $@
-#	$(Q) $(ESPTOOL) elf2image --version=2 $(TARGET_OUT) -o $@
+$(FW_FILE_1): $(TARGET_OUT)
+	$(vecho) "\e[0;32m[OK]\e[0m FW $@\n"
+	$(ESPTOOL) elf2image $< -o $(FW_BASE)/
+	
+$(FW_FILE_2): $(TARGET_OUT)
+	$(vecho) "\e[0;32m[OK]\e[0m FW $@\n"
+	$(ESPTOOL) elf2image $< -o $(FW_BASE)/
 
-#../esp-open-lwip/liblwip_open.a:
-#	cd ../esp-open-lwip ; make -f Makefile.ajk all
-
-
-$(FW_FILE_1): $(APP_AR)
-	$(LD) -L$(CURDIR)/../esp-open-lwip -L$(SDK_LIBDIR) $(LD_SCRIPT1) $(LDFLAGS) -Wl,--start-group $(LIBS) $(APP_AR) -Wl,--end-group -o $(TARGET_OUT)
-	$(ESPTOOL) elf2image --version=2 $(TARGET_OUT) -o $(FW_FILE_1)
-
-
-$(FW_FILE_2): $(APP_AR)
-	$(LD) -L$(CURDIR)/../esp-open-lwip -L$(SDK_LIBDIR) $(LD_SCRIPT2) $(LDFLAGS) -Wl,--start-group $(LIBS) $(APP_AR) -Wl,--end-group -o $(TARGET_OUT)
-	$(ESPTOOL) elf2image --version=2 $(TARGET_OUT) -o $(FW_FILE_2)
-
-$(RBOOT_FILE): rboot.bin
-	cp rboot.bin $(RBOOT_FILE)
-
-
-$(FIRMWARE)/sha1sums: $(APP_AR) $(FW_FILE_1) $(FW_FILE_2) $(RBOOT_FILE)
-	sha1sum $(FW_FILE_1) $(FW_FILE_2) $(RBOOT_FILE) > $(FIRMWARE)/sha1sums
+$(TARGET_OUT): $(APP_AR)
+	$(vecho) "\e[0;32m[OK]\e[0m LD $@\n"
+	$(Q) $(LD) -L$(SDK_LIBDIR) $(LD_SCRIPT) $(LDFLAGS) -Wl,--start-group $(LIBS) $(APP_AR) -Wl,--end-group -o $@
 
 $(APP_AR): $(OBJ)
-	$(AR) cru $@ $^
+	$(vecho) "\e[0;32m[OK]\e[0m AR $@\n"
+	$(Q) $(AR) cru $@ $^
 
-checkdirs: $(BUILD_DIR) $(FIRMWARE)
+checkdirs: $(BUILD_DIR) $(FW_BASE)
 
 $(BUILD_DIR):
 	$(Q) mkdir -p $@
 
-$(FIRMWARE):
+firmware:
 	$(Q) mkdir -p $@
 
-flash: $(FIRMWARE)/sha1sums
-	$(ESPTOOL) --port $(PORT) --baud $(BAUD) write_flash $(ESPTOOLOPTS) 0x00000 $(RBOOT_FILE) $(FW_1_ADDR) $(FW_FILE_1)
+flash: $(FW_FILE_1)  $(FW_FILE_2)
+	$(ESPTOOL) -p $(ESPPORT) write_flash $(ESPTOOLOPTS) $(FW_1) $(FW_FILE_1) $(FW_2) $(FW_FILE_2)
 
-flash1: $(FIRMWARE)/sha1sums
-	$(ESPTOOL) --port $(PORT) --baud $(BAUD) write_flash $(ESPTOOLOPTS) 0x00000 $(RBOOT_FILE) $(FW_2_ADDR) $(FW_FILE_2)
+test: flash
+	screen $(ESPPORT) 115200
 
-flashboth: $(FIRMWARE)/sha1sums
-	$(ESPTOOL) --port $(PORT) --baud $(BAUD) write_flash $(ESPTOOLOPTS) 0x00000 $(RBOOT_FILE) $(FW_1_ADDR) $(FW_FILE_1) $(FW_2_ADDR) $(FW_FILE_2)
+rebuild: clean all
 
 clean:
-	rm -rf $(FIRMWARE) $(BUILD)
-	find . -name "*~" -print0 | xargs -0 rm -rf
+	$(Q) rm -f $(APP_AR)
+	$(Q) rm -f $(TARGET_OUT)
+	$(Q) rm -rf $(BUILD_DIR)
+	$(Q) rm -rf $(BUILD_BASE)
+	$(Q) rm -f $(FW_FILE_1)
+	$(Q) rm -f $(FW_FILE_2)
+	$(Q) rm -rf $(FW_BASE)
 
 $(foreach bdir,$(BUILD_DIR),$(eval $(call compile-objects,$(bdir))))

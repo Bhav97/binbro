@@ -11,6 +11,7 @@
 #include "stdout/stdout.h"
 #include "ets_sys.h"
 #include "osapi.h"
+#include "user_interface.h"
 #include "stdout/uart_hw.h"
 
 static void ICACHE_FLASH_ATTR stdoutUartTxd(char c) {
