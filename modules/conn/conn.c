@@ -15,6 +15,9 @@
 
 #include "conn/conn.h"
 
+extern uint32_t chip_id;
+extern volatile float distance;
+
 LOCAL struct espconn udp_tx;
 LOCAL uint32_t last_addr = 0;
 LOCAL esp_udp udp_proto_tx;
@@ -24,10 +27,9 @@ static netif_linkoutput_fn orig_output_ap, orig_output_sta;
 
 static void ICACHE_FLASH_ATTR client_sent_cb(void *arg)
 {
-	//os_printf("web_config_client_sent_cb(): data sent to client\n");
 	struct espconn *pespconn = (struct espconn *)arg;
 	os_printf("client_sent_cb\n");
-	espconn_disconnect(pespconn);
+	// espconn_disconnect(pespconn);
 }
 
 static void ICACHE_FLASH_ATTR client_discon_cb(void *arg)
@@ -35,85 +37,64 @@ static void ICACHE_FLASH_ATTR client_discon_cb(void *arg)
     //os_printf("web_config_client_sent_cb(): data sent to client\n");
     struct espconn *pespconn = (struct espconn *)arg;
     os_printf("client_discon_cb\n");
-    espconn_disconnect(pespconn);
+    // espconn_disconnect(pespconn);
 }
 
-static void ICACHE_FLASH_ATTR client_recv_cb(void *arg)
+static void ICACHE_FLASH_ATTR client_recv_cb(void *arg, char *data, unsigned short length)
 {
-	os_printf("client_recv_cb\n");
+	struct espconn *pespconn = (struct espconn *) arg;
+	char *str;
+	str = strstr(data, " /");
+	if (str != NULL) {
+		str = strtok(str+2, " ");
+	}
+	char *txbuf = (char *) os_malloc(128);
+	switch(str[0]) {
+		case 'i':
+			os_sprintf(txbuf, "%s%s\n", HTTP_OK_RESP(text/plain), chip_id);
+			os_printf("%s\n", txbuf);
+			espconn_send(pespconn, txbuf, 128);
+			break;
+		case 'l':
+			os_sprintf(txbuf, "%s%s\n", HTTP_OK_RESP(text/plain), "MESH LEVEL");
+			os_printf("%s\n", txbuf);
+			espconn_send(pespconn, txbuf, os_strlen(txbuf));
+			break;
+		case 'f':
+		default : {		
+			os_sprintf(txbuf, "%s%s\n", HTTP_OK_RESP(text/plain), "PORTAL");
+			os_printf("%s\n", txbuf);
+			espconn_send(pespconn, txbuf, sizeof(txbuf));
+		}
+	}
+	os_free(txbuf);
+	// espconn_disconnect(pespconn);
 }
 
 static void ICACHE_FLASH_ATTR client_connected_cb(void *arg)
 {
 	os_printf("client_connected_cb\n");
 	struct espconn *pespconn = (struct espconn *)arg;
-	espconn_send(pespconn, "HTTP/1.0 200 OK\r\nContent-Type: text/json\r\n\r\n{SmartBIN:{fill:10}}", 8);
+
+	char *txbuf = (char *) os_malloc(128);
+	os_sprintf(txbuf, "%s<html><body><h1>0x%d</h1></body></html>\n", HTTP_OK_RESP(text/html), distance);
+	espconn_send(pespconn, txbuf, os_strlen(txbuf));
 	espconn_regist_disconcb(pespconn, client_discon_cb);
 	espconn_regist_recvcb(pespconn, (espconn_recv_callback) client_recv_cb);
 	espconn_regist_sentcb(pespconn, client_sent_cb);
+	os_printf("%s", txbuf);
+	os_free(txbuf);
 }
-
-
-void ICACHE_FLASH_ATTR
-udp_recv_cb(void *arg)
-{
-	// struct espconn *conn = (struct espconn *)arg;
-	// uint8_t *addr_array = NULL;
-	// if (conn->type == ESPCONN_TCP) {
-	// 	addr_array = conn->proto.tcp->remote_ip;
-	// } else {
-	// 	addr_array = conn->proto.udp->remote_ip;
-	// }
-	// if (addr_array != NULL) {
-	// 	ip_addr_t addr;
-	// 	IP4_ADDR(&addr, addr_array[0], addr_array[1], addr_array[2], addr_array[3]);
-	// 	last_addr = addr.addr;
-	// 	os_printf("Received data from "IPSTR"\n", IP2STR(&last_addr));
-	// }
-	// os_printf("OK\n");
-}
-
-// void ICACHE_FLASH_ATTR
-// tcp_connect_cb(void *arg)
-// {
-// 	struct espconn * conn  = (struct espconn *) arg;
-// 	// os_printf("TCP connection received from "IPSTR":%d\n",
-//  //              IP2STR(conn->proto.tcp->remote_ip), conn->proto.tcp->remote_port);
-// 	os_printf("tcp_connect_cb");
-// 	espconn_regist_recvcb(conn, recv_cb);
-// }
 
 void ICACHE_FLASH_ATTR
 server_init()
 {
-	// setup tcp server
-	// struct espconn tcp_conn;
-	// esp_tcp tcp_proto;
-	
-
-	// tcp_proto.local_port = 5555;
-	// tcp_conn.type = ESPCONN_TCP;
-	// tcp_conn.state = ESPCONN_NONE;
-	// tcp_conn.proto.tcp = &tcp_proto;
-	// espconn_regist_connectcb(&tcp_conn, tcp_connect_cb);
-	// espconn_accept(&tcp_conn);
-
-	//setup udp server
-	// struct espconn udp_conn;
-	// esp_udp udp_proto;
-
-	// udp_proto.local_port = 5555;
-	// udp_conn.type = ESPCONN_UDP;
-	// udp_conn.state = ESPCONN_NONE;
-	// udp_conn.proto.udp = &udp_proto;
-	// espconn_create(&udp_conn);
-	// espconn_regist_recvcb(&udp_conn,(espconn_recv_callback) udp_recv_cb);
 	os_printf("server_init():\n");
 	struct espconn *conn = (struct espconn *) os_zalloc(sizeof(struct espconn));
 	conn->type  = ESPCONN_TCP;
 	conn->state = ESPCONN_NONE;
 	conn->proto.tcp = (esp_tcp *)os_zalloc(sizeof(esp_tcp));
-	conn->proto.tcp->local_port = 5555;
+	conn->proto.tcp->local_port = 80;
 
 	espconn_regist_connectcb(conn, client_connected_cb);
 	espconn_accept(conn);

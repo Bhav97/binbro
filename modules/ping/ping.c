@@ -28,7 +28,6 @@
 * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 * POSSIBILITY OF SUCH DAMAGE.
 */
-#include "espmissingincludes.h"
 #include "ping/ping.h"
 #include "osapi.h"
 #include "ets_sys.h"

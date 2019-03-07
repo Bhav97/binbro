@@ -9,8 +9,9 @@
 # relative to the project directory
 BUILD_BASE	= build
 FW_BASE = firmware
-ESPTOOL = esptool.py
-ESPTOOLOPTS	= -ff 40m -fm dio -fs 8m
+ESPTOOL = esptool 
+#.py
+ESPTOOLOPTS	= -ff 40m -fm dio -fs 1MB
 
 # name for the target project
 TARGET		= app
